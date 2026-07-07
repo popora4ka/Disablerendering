@@ -94,7 +94,7 @@ local function GetStorage()
     return sg
 end
 
-local function MakeDraggable(gui, maid, ripple, sound, clickFunc)
+local function MakeDraggable(gui, maid, ripple, sound, clickFunc, id)
     local dragging, dragInput, dragStart, startPos
     local hasMoved = false
     
@@ -137,7 +137,15 @@ local function MakeDraggable(gui, maid, ripple, sound, clickFunc)
             local delta = input.Position - dragStart
             if delta.Magnitude > 7 then hasMoved = true end
             local screen = gui.Parent.AbsoluteSize
-            gui.Position = __UD2(startPos.X.Scale + (delta.X / screen.X), 0, startPos.Y.Scale + (delta.Y / screen.Y), 0)
+            local newPos = __UD2(startPos.X.Scale + (delta.X / screen.X), 0, startPos.Y.Scale + (delta.Y / screen.Y), 0)
+            gui.Position = newPos
+            -- Сохраняем позицию
+            if id then
+                local posData = {newPos.X.Scale, newPos.X.Offset, newPos.Y.Scale, newPos.Y.Offset}
+                if shared.SaveData and shared.LoadData then
+                    shared.SaveData(id .. "_pos", posData)
+                end
+            end
         end
     end))
 end
@@ -152,19 +160,29 @@ function BindableButtons.AddBButton(id, text, onFunc, offFunc)
     local buttonSizeY = 0.11
     local widthScale = buttonSizeY * (screen.Y / screen.X)
     
-    local xPos = 0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005))
-    local yPos = 0.9 - (__FLOOR(BindableButtons.Count / 8) * (buttonSizeY + 0.015))
+    -- Загружаем сохранённую позицию
+    local savedPos = nil
+    if shared.LoadData then
+        savedPos = shared.LoadData(id .. "_pos")
+    end
+    local xPos, yPos
+    if savedPos and #savedPos == 4 then
+        xPos = __UD2(savedPos[1], savedPos[2], savedPos[3], savedPos[4])
+    else
+        xPos = __UD2(0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005)), 0, 0.9 - (__FLOOR(BindableButtons.Count / 8) * (buttonSizeY + 0.015)), 0)
+    end
     
     local ImageButton = Instance.new("ImageButton")
     ImageButton.Name = id
     ImageButton.Size = __UD2(widthScale, 0, buttonSizeY, 0)
-    ImageButton.Position = __UD2(xPos, 0, yPos, 0)
+    ImageButton.Position = savedPos and xPos or __UD2(0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005)), 0, 0.9 - (__FLOOR(BindableButtons.Count / 8) * (buttonSizeY + 0.015)), 0)
     ImageButton.AnchorPoint = __V2(0.5, 0.5)
     ImageButton.Image = __SHAPES[0]
     ImageButton.BackgroundTransparency = 1
     ImageButton.BorderSizePixel = 0
     ImageButton.ClipsDescendants = false
     ImageButton.AutoButtonColor = false
+    ImageButton.Visible = false -- Скрыта по умолчанию
     ImageButton.Parent = GetStorage()
     buttonMaid:GiveTask(ImageButton)
 
@@ -228,7 +246,7 @@ function BindableButtons.AddBButton(id, text, onFunc, offFunc)
         debounce = false
     end
 
-    MakeDraggable(ImageButton, buttonMaid, ripple, sound, onClick)
+    MakeDraggable(ImageButton, buttonMaid, ripple, sound, onClick, id)
     buttonMaid:GiveTask(__RS.RenderStepped:Connect(function() Stroke.Rotation = (Stroke.Rotation + 1) % 360 end))
 
     BindableButtons.Buttons[id] = ImageButton
@@ -251,51 +269,65 @@ function BindableButtons.DeleteBButton(id)
         BindableButtons.Buttons[id] = nil
     end
 end
+
+function BindableButtons.SetVisibility(id, visible)
+    local btn = BindableButtons.Buttons[id]
+    if btn then
+        btn.Visible = visible
+    end
+end
+
 -- ==================== RENDERING LOGIC ====================
 local renderingDisabled = false
 
 local function setRendering(state)
-	renderingDisabled = state
-	RunService:Set3dRenderingEnabled(not state)
-	if state then
-		shared.Notify("Rendering disabled", 2)
-	else
-		shared.Notify("Rendering enabled", 2)
-	end
+    renderingDisabled = state
+    RunService:Set3dRenderingEnabled(not state)
+    if state then
+        shared.Notify("Rendering disabled", 2)
+    else
+        shared.Notify("Rendering enabled", 2)
+    end
 end
 
--- Создаём переключаемую кнопку-бинд
+-- Основной Toggle для включения/выключения рендеринга
+my_own_section:AddToggle("Disable Rendering", function(bool)
+    setRendering(bool)
+end)
+
+-- Создаём переключаемую кнопку-бинд (изначально скрыта)
 local renderBind = BindableButtons.AddBButton(
-	"RenderToggle",
-	"Render",
-	function()
-		setRendering(true)
-	end,
-	function()
-		setRendering(false)
-	end
+    "RenderToggle",
+    "Render",
+    function()
+        setRendering(true)
+    end,
+    function()
+        setRendering(false)
+    end
 )
 
--- Toggle в меню, который включает/выключает саму Bind-кнопку
+-- Toggle в меню, который показывает/скрывает Bind-кнопку
 local bindEnabled = false
 my_own_section:AddToggle("Enable Render Bind Button", function(bool)
-	bindEnabled = bool
-	if bool then
-		shared.Notify("Bind button activated", 2)
-	else
-		shared.Notify("Bind button deactivated", 2)
-		if renderBind.Value == true then
-			renderBind.Value = false
-			setRendering(false)
-		end
-	end
+    bindEnabled = bool
+    BindableButtons.SetVisibility("RenderToggle", bool)
+    if bool then
+        shared.Notify("Bind button shown", 2)
+    else
+        shared.Notify("Bind button hidden", 2)
+        if renderBind.Value == true then
+            renderBind.Value = false
+            setRendering(false)
+        end
+    end
 end)
 
 -- Слушаем изменения кнопки-бинда только когда она включена
 renderBind.Changed:Connect(function(val)
-	if bindEnabled then
-		setRendering(val)
-	end
+    if bindEnabled then
+        setRendering(val)
+    end
 end)
 
 -- Устанавливаем форму кнопки (0 = Circle, 1 = Square, 2 = Hexagon, 3 = Star, 4 = Heart)
