@@ -244,6 +244,13 @@ function BindableButtons.SetShape(id, shape)
     end
 end
 
+function BindableButtons.SetVisibility(id, visible)
+    local btn = BindableButtons.Buttons[id]
+    if btn then
+        btn.Visible = visible
+    end
+end
+
 function BindableButtons.DeleteBButton(id)
     if BindableButtons.Maids[id] then
         BindableButtons.Maids[id]:Destroy()
@@ -283,14 +290,18 @@ local renderBind = BindableButtons.AddBButton(
 	end
 )
 
--- Toggle в меню, который включает/выключает саму Bind-кнопку
+-- Скрываем кнопку при старте
+BindableButtons.SetVisibility("RenderToggle", false)
+
+-- Toggle в меню, который показывает/скрывает Bind-кнопку
 local bindEnabled = false
 my_own_section:AddToggle("Enable Render Bind Button", function(bool)
 	bindEnabled = bool
+	BindableButtons.SetVisibility("RenderToggle", bool)
 	if bool then
-		shared.Notify("Bind button activated", 2)
+		shared.Notify("Bind button shown", 2)
 	else
-		shared.Notify("Bind button deactivated", 2)
+		shared.Notify("Bind button hidden", 2)
 		if renderBind.Value == true then
 			renderBind.Value = false
 			setRendering(false)
@@ -307,5 +318,3 @@ end)
 
 -- Устанавливаем форму кнопки (0 = Circle, 1 = Square, 2 = Hexagon, 3 = Star, 4 = Heart)
 BindableButtons:SetShape("RenderToggle", 0)
-
-
