@@ -94,7 +94,7 @@ local function GetStorage()
     return sg
 end
 
-local function MakeDraggable(gui, maid, ripple, sound, clickFunc)
+local function MakeDraggable(gui, maid, ripple, sound, clickFunc, id)
     local dragging, dragInput, dragStart, startPos
     local hasMoved = false
     
@@ -136,8 +136,13 @@ local function MakeDraggable(gui, maid, ripple, sound, clickFunc)
         if input == dragInput and dragging then
             local delta = input.Position - dragStart
             if delta.Magnitude > 7 then hasMoved = true end
-            local screen = gui.Parent.AbsoluteSize
-            gui.Position = __UD2(startPos.X.Scale + (delta.X / screen.X), 0, startPos.Y.Scale + (delta.Y / screen.Y), 0)
+            local screenSize = gui.Parent.AbsoluteSize
+            local newPos = __UD2(startPos.X.Scale + (delta.X / screenSize.X), 0, startPos.Y.Scale + (delta.Y / screenSize.Y), 0)
+            gui.Position = newPos
+            -- Сохраняем позицию
+            if id and shared.SaveData then
+                shared.SaveData(id .. "_pos", {newPos.X.Scale, newPos.X.Offset, newPos.Y.Scale, newPos.Y.Offset})
+            end
         end
     end))
 end
@@ -152,13 +157,25 @@ function BindableButtons.AddBButton(id, text, onFunc, offFunc)
     local buttonSizeY = 0.11
     local widthScale = buttonSizeY * (screen.Y / screen.X)
     
-    local xPos = 0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005))
-    local yPos = 0.9 - (__FLOOR(BindableButtons.Count / 8) * (buttonSizeY + 0.015))
+    -- Загружаем сохранённую позицию
+    local savedPos = nil
+    if shared.LoadData then
+        savedPos = shared.LoadData(id .. "_pos")
+    end
+    
+    local xPos, yPos
+    if savedPos and #savedPos == 4 then
+        xPos = savedPos[1]
+        yPos = savedPos[3]
+    else
+        xPos = 0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005))
+        yPos = 0.9 - (__FLOOR(BindableButtons.Count / 8) * (buttonSizeY + 0.015))
+    end
     
     local ImageButton = Instance.new("ImageButton")
     ImageButton.Name = id
     ImageButton.Size = __UD2(widthScale, 0, buttonSizeY, 0)
-    ImageButton.Position = __UD2(xPos, 0, yPos, 0)
+    ImageButton.Position = savedPos and __UD2(savedPos[1], savedPos[2], savedPos[3], savedPos[4]) or __UD2(xPos, 0, yPos, 0)
     ImageButton.AnchorPoint = __V2(0.5, 0.5)
     ImageButton.Image = __SHAPES[0]
     ImageButton.BackgroundTransparency = 1
@@ -228,7 +245,7 @@ function BindableButtons.AddBButton(id, text, onFunc, offFunc)
         debounce = false
     end
 
-    MakeDraggable(ImageButton, buttonMaid, ripple, sound, onClick)
+    MakeDraggable(ImageButton, buttonMaid, ripple, sound, onClick, id)
     buttonMaid:GiveTask(__RS.RenderStepped:Connect(function() Stroke.Rotation = (Stroke.Rotation + 1) % 360 end))
 
     BindableButtons.Buttons[id] = ImageButton
