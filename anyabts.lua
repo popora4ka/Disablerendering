@@ -78,6 +78,24 @@ local function safecallback(callback)
     end
 end
 
+-- Функции для сохранения/загрузки позиции
+local function SavePosition(id, pos)
+    local success, err = pcall(function()
+        local data = {pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset}
+        writefile("odh_bind_" .. id .. ".txt", game:GetService("HttpService"):JSONEncode(data))
+    end)
+end
+
+local function LoadPosition(id)
+    local success, data = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(readfile("odh_bind_" .. id .. ".txt"))
+    end)
+    if success and data and #data == 4 then
+        return data
+    end
+    return nil
+end
+
 local function GetStorage()
     local player = __PLRS.LocalPlayer
     local playerGui = player:WaitForChild("PlayerGui")
@@ -139,9 +157,9 @@ local function MakeDraggable(gui, maid, ripple, sound, clickFunc, id)
             local screenSize = gui.Parent.AbsoluteSize
             local newPos = __UD2(startPos.X.Scale + (delta.X / screenSize.X), 0, startPos.Y.Scale + (delta.Y / screenSize.Y), 0)
             gui.Position = newPos
-            -- Сохраняем позицию
-            if id and shared.SaveData then
-                shared.SaveData(id .. "_pos", {newPos.X.Scale, newPos.X.Offset, newPos.Y.Scale, newPos.Y.Offset})
+            -- Сохраняем позицию при перемещении
+            if id then
+                SavePosition(id, newPos)
             end
         end
     end))
@@ -158,13 +176,10 @@ function BindableButtons.AddBButton(id, text, onFunc, offFunc)
     local widthScale = buttonSizeY * (screen.Y / screen.X)
     
     -- Загружаем сохранённую позицию
-    local savedPos = nil
-    if shared.LoadData then
-        savedPos = shared.LoadData(id .. "_pos")
-    end
+    local savedPos = LoadPosition(id)
     
     local xPos, yPos
-    if savedPos and #savedPos == 4 then
+    if savedPos then
         xPos = savedPos[1]
         yPos = savedPos[3]
     else
